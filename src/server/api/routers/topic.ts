@@ -18,4 +18,15 @@ export const topicRouter = createTRPCRouter({
         },
       });
     }),
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.prisma.note.deleteMany({
+        where: { topicId: input.id },
+      });
+
+      return ctx.prisma.topic.delete({
+        where: { id: input.id },
+      });
+    }),
 });

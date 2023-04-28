@@ -1,10 +1,14 @@
 import { type NextPage } from "next";
 import Head from "next/head";
-import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { api, type RouterOutputs } from "@/utils/api";
+import Header from "@/components/Header";
+import { useState } from "react";
+import NoteEditor from "@/components/NoteEditor";
+import NoteCard from "@/components/NoteCard";
 
-import { api } from "@/utils/api";
-import Header from "@/components/header";
+type Topic = RouterOutputs["topic"]["getAll"][0];
+type Note = RouterOutputs["note"]["getAll"][0];
 
 const Home: NextPage = () => {
   return (
@@ -25,11 +29,128 @@ const Home: NextPage = () => {
 export default Home;
 
 const Content: React.FC = () => {
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const { data: sessionData } = useSession();
   const { data: topics, refetch: refetchTopics } = api.topic.getAll.useQuery(
     undefined,
-    { enabled: sessionData?.user !== undefined }
+    {
+      enabled: sessionData?.user !== undefined,
+      onSuccess: (data) => setSelectedTopic(selectedTopic ?? data[0] ?? null),
+    }
   );
 
-  return <div>{JSON.stringify(topics)}</div>;
+  const createTopic = api.topic.create.useMutation({
+    onSuccess: () => refetchTopics(),
+  });
+
+  const deleteTopic = api.topic.delete.useMutation({
+    onSuccess: () => refetchTopics(),
+  });
+
+  const { data: notes, refetch: refetchNotes } = api.note.getAll.useQuery(
+    {
+      topicId: selectedTopic?.id ?? "",
+    },
+    {
+      enabled: sessionData?.user !== undefined && selectedTopic !== null,
+    }
+  );
+
+  const createNote = api.note.create.useMutation({
+    onSuccess: () => refetchNotes(),
+  });
+
+  const deleteNote = api.note.delete.useMutation({
+    onSuccess: () => refetchNotes(),
+  });
+
+  const updateNote = api.note.update.useMutation({
+    onSuccess: () => refetchNotes(),
+  });
+
+  return (
+    <div className="mx-5 mt-5 grid grid-cols-4 gap-2">
+      <div className="px-2">
+        <ul className="menu rounded-box w-56 bg-base-100 p-2">
+          {topics?.map((topic) => (
+            <li key={topic.id}>
+              <span className="flex justify-between">
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setSelectedTopic(topic);
+                  }}
+                >
+                  {topic.title}
+                </a>
+                <button
+                  className="btn-outline btn-square btn"
+                  onClick={() => {
+                    deleteTopic.mutate({ id: topic.id });
+                    if (topic.id === selectedTopic?.id) setSelectedTopic(null);
+                  }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <input
+          type="text"
+          placeholder="New Topic"
+          className="input-bordered input input-sm w-full"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              const title = e.currentTarget.value;
+              createTopic.mutate({ title });
+              e.currentTarget.value = "";
+            }
+          }}
+        />
+      </div>
+      <div className="col-span-3">
+        <div>
+          {notes?.map((note) => (
+            <div key={note.id} className="mt-5">
+              <NoteCard
+                note={note}
+                onEdit={setSelectedNote}
+                onDelete={() => deleteNote.mutate({ id: note.id })}
+              />
+            </div>
+          ))}
+        </div>
+        <NoteEditor
+          activeNote={selectedNote}
+          onSave={({ title, content }) => {
+            if (selectedNote !== null) {
+              return updateNote.mutate({ id: selectedNote.id, title, content });
+            } else {
+              return createNote.mutate({
+                title,
+                content,
+                topicId: selectedTopic?.id ?? "",
+              });
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
 };
